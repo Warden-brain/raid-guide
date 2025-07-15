@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Настройка RAID1 с mdadm</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="2" fill="rgba(255,255,255,0.1)"/><circle cx="20" cy="20" r="1" fill="rgba(255,255,255,0.1)"/><circle cx="80" cy="30" r="1.5" fill="rgba(255,255,255,0.1)"/><circle cx="30" cy="80" r="1" fill="rgba(255,255,255,0.1)"/><circle cx="70" cy="70" r="1.5" fill="rgba(255,255,255,0.1)"/></svg>');
+            animation: float 20s infinite linear;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0) rotate(0deg); }
+            100% { transform: translateY(-100px) rotate(360deg); }
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .step {
+            margin-bottom: 40px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 5px solid #3498db;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .step:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        .step h2 {
+            color: #2c3e50;
+            font-size: 1.4em;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .step-number {
+            background: #3498db;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .code-block {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            position: relative;
+            border: 1px solid #34495e;
+        }
+
+        .code-block::before {
+            content: 'bash';
+            position: absolute;
+            top: 8px;
+            right: 15px;
+            background: #e74c3c;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .code-block.config::before {
+            content: 'config';
+            background: #f39c12;
+        }
+
+        .code-block.ini::before {
+            content: 'ini';
+            background: #9b59b6;
+        }
+
+        .code-block pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-left: 5px solid #f39c12;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+
+        .warning-title {
+            font-weight: bold;
+            color: #b7860d;
+            margin-bottom: 5px;
+        }
+
+        .commands-section {
+            background: #e8f5e8;
+            border: 1px solid #c3e6c3;
+            border-left: 5px solid #27ae60;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 30px 0;
+        }
+
+        .commands-section h3 {
+            color: #27ae60;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .command-group {
+            margin-bottom: 20px;
+        }
+
+        .command-group h4 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .notes {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-left: 5px solid #2196f3;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 30px 0;
+        }
+
+        .notes h3 {
+            color: #1976d2;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .notes ul {
+            margin-left: 20px;
+        }
+
+        .notes li {
+            margin-bottom: 8px;
+            color: #424242;
+        }
+
+        .footer {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            margin-top: 40px;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 60px;
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8em;
+            transition: background 0.3s ease;
+        }
+
+        .copy-btn:hover {
+            background: #2980b9;
+        }
+
+        .toc {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border: 1px solid #dee2e6;
+        }
+
+        .toc h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .toc ul {
+            list-style: none;
+            margin-left: 0;
+        }
+
+        .toc li {
+            margin-bottom: 8px;
+        }
+
+        .toc a {
+            color: #3498db;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .toc a:hover {
+            color: #2980b9;
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .header p {
+                font-size: 1em;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .step {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ Настройка RAID1 с mdadm</h1>
+            <p>Пошаговая инструкция по установке и настройке RAID1 массива в Linux</p>
+        </div>
+
+        <div class="content">
+            <div class="toc">
+                <h3>📋 Содержание</h3>
+                <ul>
+                    <li><a href="#step1">1. Установка mdadm</a></li>
+                    <li><a href="#step2">2. Подготовка дисков</a></li>
+                    <li><a href="#step3">3. Создание RAID1 массива</a></li>
+                    <li><a href="#step4">4. Проверка состояния RAID</a></li>
+                    <li><a href="#step5">5. Создание файловой системы</a></li>
+                    <li><a href="#step6">6. Монтирование</a></li>
+                    <li><a href="#step7">7. Автоматическое монтирование</a></li>
+                    <li><a href="#step8">8. Сохранение конфигурации</a></li>
+                    <li><a href="#step9">9. Настройка мониторинга</a></li>
+                    <li><a href="#step10">10. Служба принудительного запуска</a></li>
+                    <li><a href="#step11">11. Проверка работы</a></li>
+                    <li><a href="#commands">Полезные команды</a></li>
+                    <li><a href="#notes">Важные замечания</a></li>
+                </ul>
+            </div>
+
+            <div class="step" id="step1">
+                <h2><span class="step-number">1</span>Установка mdadm</h2>
+                <p>Обновляем пакеты и устанавливаем утилиту mdadm для управления RAID массивами:</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>sudo apt update
+sudo apt install mdadm</pre>
+                </div>
+            </div>
+
+            <div class="step" id="step2">
+                <h2><span class="step-number">2</span>Подготовка дисков</h2>
+                <p>Проверяем состояние дисков и очищаем их от существующих данных:</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>sudo fdisk -l /dev/vdb /dev/vdc</pre>
+                </div>
+                <p>Очищаем диски от метаданных:</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>sudo wipefs -a /dev/vdb
+sudo wipefs -a /dev/vdc</pre>
+                </div>
+            </div>
+
+            <div class="step" id="step3">
+                <h2><span class="step-number">3</span>Создание RAID1 массива</h2>
+                <p>Создаем RAID1 массив из двух дисков:</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>sudo mdadm --create /dev/md0 --level=1 --raid-devices=2 /dev/vdb /dev/vdc</pre>
+                </div>
+            </div>
+
+            <div class="step" id="step4">
+                <h2><span class="step-number">4</span>Проверка состояния RAID</h2>
+                <p>Проверяем, что RAID массив создан успешно:</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>sudo mdadm --detail /dev/md0
+cat /proc/mdstat</pre>
+                </div>
+            </div>
+
+            <div class="step" id="step5">
+                <h2><span class="step-number">5</span>Создание файловой системы</h2>
+                <p>Создаем файловую систему ext4 на RAID массиве:</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>sudo mkfs.ext4 /dev/md0</pre>
+                </div>
+            </div>
+
+            <div class="step" id="step6">
+                <h2><span class="step-number">6</span>Создание точки монтирования</h2>
+                <p>Создаем директорию для монтирования и монтируем RAID:</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>sudo mkdir /mnt/raid1
+sudo mount /dev/md0 /mnt/raid1</pre>
+                </div>
+            </div>
+
+            <div class="step" id="step7">
+                <h2><span class="step-number">7</span>Настройка автоматического монтирования</h2>
+                <p>Добавляем запись в fstab для автоматического монтирования при загрузке:</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>nano /etc/fstab</pre>
+                </div>
+                <p>Добавляем следующую строку:</p>
+                <div class="code-block config">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>/dev/md0 /mnt/raid1 ext4 defaults,nofail 0 2</pre>
+                </div>
+                <div class="warning">
+                    <div class="warning-title">⚠️ Важно:</div>
+                    Параметр <code>nofail</code> позволяет системе загружаться даже если RAID недоступен.
+                </div>
+            </div>
+
+            <div class="step" id="step8">
+                <h2><span class="step-number">8</span>Сохранение конфигурации RAID</h2>
+                <p>Сохраняем конфигурацию RAID в системе:</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>sudo mdadm --detail --scan | sudo tee -a /etc/mdadm/mdadm.conf
+sudo update-initramfs -u</pre>
+                </div>
+                <p>Редактируем конфигурационный файл:</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>nano /etc/mdadm/mdadm.conf</pre>
+                </div>
+                <p>Содержимое должно быть примерно таким:</p>
+                <div class="code-block config">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>AUTO -all
+ARRAY /dev/md0 metadata=1.2 name=debian:0 UUID=96d48ec9:25aea444:f9977b9f:908a1181</pre>
+                </div>
+            </div>
+
+            <div class="step" id="step9">
+                <h2><span class="step-number">9</span>Настройка мониторинга RAID</h2>
+                <p>Создаем override файл для службы мониторинга:</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>sudo mkdir -p /etc/systemd/system/mdmonitor.service.d/
+sudo nano /etc/systemd/system/mdmonitor.service.d/override.conf</pre>
+                </div>
+                <p>Содержимое override файла:</p>
+                <div class="code-block ini">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>[Service]
+ExecStart=
+ExecStart=/sbin/mdadm --monitor --scan --daemonise --syslog --delay=1800</pre>
+                </div>
+                <p>Перезапускаем службу:</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>systemctl daemon-reload
+systemctl restart mdmonitor.service</pre>
+                </div>
+            </div>
+
+            <div class="step" id="step10">
+                <h2><span class="step-number">10</span>Служба принудительного запуска</h2>
+                <p>Создаем службу для автоматического запуска деградированного RAID:</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>nano /etc/systemd/system/mdadm-force-start.service</pre>
+                </div>
+                <p>Содержимое файла службы:</p>
+                <div class="code-block ini">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>[Unit]
+Description=Force start degraded RAID arrays
+DefaultDependencies=no
+After=systemd-udev-settle.service
+Before=local-fs-pre.target
+Wants=systemd-udev-settle.service
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/mdadm --run /dev/md0
+RemainAfterExit=yes
+TimeoutSec=0
+
+[Install]
+WantedBy=local-fs-pre.target</pre>
+                </div>
+                <p>Активируем службу:</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>systemctl enable mdadm-force-start.service
+systemctl daemon-reload
+update-initramfs -u</pre>
+                </div>
+            </div>
+
+            <div class="step" id="step11">
+                <h2><span class="step-number">11</span>Проверка работы</h2>
+                <p>Проверяем, что все работает корректно:</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    <pre>df -h /mnt/raid1
+sudo mdadm --detail /dev/md0</pre>
+                </div>
+            </div>
+
+            <div class="commands-section" id="commands">
+                <h3>🔧 Полезные команды для управления RAID</h3>
+                
+                <div class="command-group">
+                    <h4>Проверка состояния</h4>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                        <pre>cat /proc/mdstat
+sudo mdadm --detail /dev/md0</pre>
+                    </div>
+                </div>
+
+                <div class="command-group">
+                    <h4>Остановка RAID</h4>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                        <pre>sudo umount /mnt/raid1
+sudo mdadm --stop /dev/md0</pre>
+                    </div>
+                </div>
+
+                <div class="command-group">
+                    <h4>Запуск RAID</h4>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                        <pre>sudo mdadm --assemble /dev/md0 /dev/vdb /dev/vdc
+sudo mount /dev/md0 /mnt/raid1</pre>
+                    </div>
+                </div>
+
+                <div class="command-group">
+                    <h4>Удаление диска из RAID</h4>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                        <pre>sudo mdadm --manage /dev/md0 --fail /dev/vdb
+sudo mdadm --manage /dev/md0 --remove /dev/vdb</pre>
+                    </div>
+                </div>
+
+                <div class="command-group">
+                    <h4>Добавление нового диска</h4>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                        <pre>sudo mdadm --manage /dev/md0 --add /dev/vdd</pre>
+                    </div>
+                </div>
+            </div>
+
+            <div class="notes" id="notes">
+                <h3>📝 Важные замечания</h3>
+                <ul>
+                    <li>Системный диск /dev/sda остается нетронутым</li>
+                    <li>Параметр <code>nofail</code> в fstab предотвращает зависание загрузки при проблемах с RAID</li>
+                    <li>Служба mdadm-force-start позволяет запускать деградированный RAID автоматически</li>
+                    <li>Мониторинг настроен на проверку каждые 30 минут (1800 секунд)</li>
+                    <li>UUID в конфигурации будет отличаться для вашего массива</li>
+                    <li>После выполнения всех шагов у вас будет полностью настроенный и автоматически монтируемый RAID1 массив</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>✨ Инструкция по настройке RAID1 с mdadm готова к использованию!</p>
+        </div>
+    </div>
+
+    <script>
+        function copyToClipboard(button) {
+            const codeBlock = button.nextElementSibling;
+            const text = codeBlock.textContent;
+            
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = button.textContent;
+                button.textContent = 'Copied!';
+                button.style.background = '#27ae60';
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = '#3498db';
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy text: ', err);
+            });
+        }
+
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
